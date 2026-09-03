@@ -18,6 +18,35 @@ TWS Media Router 会判断播放器当前是否正在播放，并选择性接管
 - 第一次按 `Media_Prev`：重置 Next 循环，保留已输入文本，并记录当前前台窗口。
 - 第二次按 `Media_Prev`：只有前台窗口仍与第一次相同时才发送 `Ctrl+A`、Backspace；如果焦点已切到其他窗口，则取消清空并重置 Prev 循环。
 
+### 当前按键流程
+
+```mermaid
+flowchart TD
+    A[耳机触发 Media_Next / Media_Prev] --> B{播放器状态是否可靠且为 Idle?}
+
+    B -- 否：Playing / Unknown / detector 失效 --> C[完全放行媒体键]
+    B -- 是 --> D{按下哪个键?}
+
+    D -- Media_Next --> N1[Prev 循环恢复到初始状态]
+    N1 --> N2{当前 Next 是第几次?}
+    N2 -- 第 1 次 --> N3[触发语音快捷键：开始录音]
+    N2 -- 第 2 次 --> N4[触发语音快捷键：结束录音]
+    N2 -- 第 3 次 --> N5[发送 Enter]
+    N5 --> N6[Next 循环回到第 1 次]
+
+    D -- Media_Prev --> P1{当前 Prev 是第几次?}
+    P1 -- 第 1 次 --> P2[重置 Next 循环并保留文本]
+    P2 --> P3[记录当前前台窗口]
+    P1 -- 第 2 次 --> P4{前台窗口仍与第一次 Prev 相同?}
+    P4 -- 是 --> P5[发送 Ctrl+A + Backspace 清空输入]
+    P4 -- 否 --> P6[取消清空]
+    P5 --> P7[Prev 循环回到第 1 次]
+    P6 --> P7
+
+    E[播放器状态变化 / Unknown / detector 过期] --> F[重置 Next 与 Prev 状态]
+    F --> C
+```
+
 脚本不会主动激活或聚焦任何窗口。使用时请让目标输入框保持焦点。
 
 ## 播放状态来源
