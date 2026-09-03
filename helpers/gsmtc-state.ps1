@@ -9,11 +9,19 @@ Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $managerType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
 $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
     Where-Object {
-        $_.Name -eq "AsTask" -and
-        $_.IsGenericMethod -and
-        $_.GetParameters().Count -eq 1
+        if ($_.Name -ne "AsTask" -or -not $_.IsGenericMethod -or $_.GetParameters().Count -ne 1) {
+            return $false
+        }
+
+        $parameterType = $_.GetParameters()[0].ParameterType
+        return $parameterType.IsGenericType -and
+            $parameterType.GetGenericTypeDefinition().FullName -eq 'Windows.Foundation.IAsyncOperation`1'
     } |
     Select-Object -First 1
+
+if ($null -eq $asTask) {
+    throw "Could not resolve AsTask(IAsyncOperation<TResult>)"
+}
 
 function Get-Manager {
     $operation = $managerType::RequestAsync()
