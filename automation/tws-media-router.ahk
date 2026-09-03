@@ -53,6 +53,10 @@ Media_Prev::{
 ShouldRouteMediaKeys() {
     global Detector, DetectorPid, Router
     pidAlive := DetectorPid && ProcessExist(DetectorPid)
+
+    if DetectorPid && !pidAlive
+        DetectorPid := 0
+
     decision := Detector.GetRouteDecision(pidAlive, A_TickCount)
 
     if decision = "reset-pass"
@@ -114,8 +118,9 @@ ReadDetectorOutput() {
 StopDetector(*) {
     global DetectorPid, OUTPUT_FILE
 
-    if DetectorPid
+    if DetectorPid && ProcessExist(DetectorPid)
         try RunWait("taskkill.exe /PID " DetectorPid " /T /F",, "Hide")
 
+    DetectorPid := 0
     try FileDelete(OUTPUT_FILE)
 }
