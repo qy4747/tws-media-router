@@ -124,7 +124,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
 
     this.fileSize = stats.size
     this.observedSize = stats.size
-    this.pendingBytes = initial.pendingBytes
+    this.pendingBytes = new Uint8Array(initial.pendingBytes)
     this.emitState(initial.state, true)
 
     fs.watchFile(this.filePath, { interval: 300 }, this.watchListener)
@@ -196,7 +196,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
         if (targetSize > this.fileSize) {
           const start = this.fileSize
           const result = await this.readRange(start, targetSize, this.pendingBytes)
-          this.pendingBytes = result.pendingBytes
+          this.pendingBytes = new Uint8Array(result.pendingBytes)
           this.fileSize = targetSize
           for (const state of result.states) this.emitState(state)
         }
@@ -218,7 +218,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
     const handle = await fsPromises.open(this.filePath, "r")
     const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES)
     const states: PlayerState[] = []
-    let pendingBytes = initialPending.slice()
+    let pendingBytes = new Uint8Array(initialPending)
     let position = start
 
     try {
@@ -229,7 +229,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
 
         const decoded = decodeElogBytes(buffer.subarray(0, bytesRead))
         const split = splitUtf8Lines(pendingBytes, decoded)
-        pendingBytes = split.pending
+        pendingBytes = new Uint8Array(split.pending)
 
         for (const line of split.lines) {
           const state = parseState(line.trim())
