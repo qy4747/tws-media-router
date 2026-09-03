@@ -30,12 +30,16 @@ export function parseIni(text: string): Record<string, Record<string, string>> {
 export function parseProviderSettings(text: string): ProviderSettings {
   const player = parseIni(text).player ?? {}
   const provider = player.provider ?? "netease"
-  const pollInterval = player.gsmtc_poll_interval_ms ?? "500"
 
   if (provider !== "netease" && provider !== "gsmtc") {
     throw new Error(`Unsupported player provider: ${provider}`)
   }
 
+  if (provider === "netease") {
+    return { provider, gsmtcPollIntervalMs: 500 }
+  }
+
+  const pollInterval = player.gsmtc_poll_interval_ms ?? "500"
   if (!/^\d+$/.test(pollInterval) || Number(pollInterval) < 100) {
     throw new Error("player.gsmtc_poll_interval_ms must be at least 100")
   }
