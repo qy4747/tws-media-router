@@ -119,22 +119,27 @@ export class NeteasePlayStateDetector extends EventEmitter {
   }
 
   public async start(): Promise<void> {
-    const stats = await fsPromises.stat(this.filePath)
-    const initial = await this.readInitialTail(stats.size)
+    try {
+      const stats = await fsPromises.stat(this.filePath)
+      const initial = await this.readInitialTail(stats.size)
 
-    this.fileSize = stats.size
-    this.observedSize = stats.size
-    this.pendingBytes = new Uint8Array(initial.pendingBytes)
-    this.emitState(initial.state, true)
+      this.fileSize = stats.size
+      this.observedSize = stats.size
+      this.pendingBytes = new Uint8Array(initial.pendingBytes)
+      this.emitState(initial.state, true)
 
-    fs.watchFile(this.filePath, { interval: 300 }, this.watchListener)
-    this.heartbeatTimer = setInterval(() => this.emit("heartbeat"), HEARTBEAT_INTERVAL_MS)
+      fs.watchFile(this.filePath, { interval: 300 }, this.watchListener)
+      this.heartbeatTimer = setInterval(() => this.emit("heartbeat"), HEARTBEAT_INTERVAL_MS)
 
-    const current = await fsPromises.stat(this.filePath)
-    this.observedSize = current.size
-    if (current.size !== this.fileSize) {
-      this.readAgain = true
-      void this.drainChanges()
+      const current = await fsPromises.stat(this.filePath)
+      this.observedSize = current.size
+      if (current.size !== this.fileSize) {
+        this.readAgain = true
+        void this.drainChanges()
+      }
+    } catch (error) {
+      this.stop()
+      throw error
     }
   }
 
