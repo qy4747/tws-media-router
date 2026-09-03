@@ -22,3 +22,21 @@ test("default config preserves the verified environment settings", async () => {
 test("rejects unsupported providers", () => {
   assert.throws(() => parseProviderSettings("[player]\nprovider=auto"), /Unsupported/)
 })
+
+test("ignores irrelevant GSMTC settings for NetEase", () => {
+  assert.deepEqual(
+    parseProviderSettings("[player]\nprovider=netease\ngsmtc_poll_interval_ms=invalid"),
+    { provider: "netease", gsmtcPollIntervalMs: 500 }
+  )
+})
+
+test("validates GSMTC polling only when GSMTC is selected", () => {
+  assert.throws(
+    () => parseProviderSettings("[player]\nprovider=gsmtc\ngsmtc_poll_interval_ms=99"),
+    /at least 100/
+  )
+  assert.deepEqual(
+    parseProviderSettings("[player]\nprovider=gsmtc\ngsmtc_poll_interval_ms=750"),
+    { provider: "gsmtc", gsmtcPollIntervalMs: 750 }
+  )
+})
