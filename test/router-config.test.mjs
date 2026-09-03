@@ -3,24 +3,20 @@ import { readFile } from "node:fs/promises"
 import test from "node:test"
 import { parseIni, parseProviderSettings } from "../build/config.js"
 
-function createRouter(nextActions, prevActions) {
+function createRouter() {
   let nextPosition = 0
   let prevPosition = 0
-
-  const advance = (actions, position) => [position % actions.length + 1, actions[position % actions.length]]
 
   return {
     next() {
       prevPosition = 0
-      const [position, action] = advance(nextActions, nextPosition)
-      nextPosition = position
-      return action
+      nextPosition = nextPosition % 3 + 1
+      return nextPosition <= 2 ? "transcription shortcut" : "enter"
     },
     prev() {
-      const [position, action] = advance(prevActions, prevPosition)
-      prevPosition = position
-      if (action === "reset") nextPosition = 0
-      return action
+      prevPosition = prevPosition % 2 + 1
+      if (prevPosition === 1) nextPosition = 0
+      return prevPosition === 1 ? "reset next position" : "clear input"
     },
     stateChanged() {
       nextPosition = 0
@@ -29,34 +25,31 @@ function createRouter(nextActions, prevActions) {
   }
 }
 
-test("default config preserves the verified action state machine", async () => {
+test("default config preserves the verified shortcut and state machine", async () => {
   const text = await readFile(new URL("../config/router.ini", import.meta.url), "utf8")
   const config = parseIni(text)
   const provider = parseProviderSettings(text)
-  const next = config.actions.next.split(",")
-  const prev = config.actions.prev.split(",")
-  const router = createRouter(next, prev)
+  const router = createRouter()
 
-  assert.deepEqual(next, ["voice", "voice", "enter"])
-  assert.deepEqual(prev, ["reset", "clear"])
+  assert.equal(config.actions, undefined)
   assert.deepEqual(provider, { provider: "netease", gsmtcPollIntervalMs: 500 })
   assert.equal(config.detector.poll_interval_ms, "100")
-  assert.equal(config.voice.press, "{LCtrl down}{LAlt down}{Up down}")
-  assert.equal(config.voice.release, "{Up up}{LAlt up}{LCtrl up}")
-  assert.equal(config.voice.hold_ms, "50")
+  assert.equal(config.transcription_shortcut.press, "{LCtrl down}{LAlt down}{Up down}")
+  assert.equal(config.transcription_shortcut.release, "{Up up}{LAlt up}{LCtrl up}")
+  assert.equal(config.transcription_shortcut.hold_ms, "50")
   assert.equal(config.clear.select, "^a")
   assert.equal(config.clear.delete, "{Backspace}")
 
-  assert.deepEqual([router.next(), router.next(), router.next(), router.next()], ["voice", "voice", "enter", "voice"])
-  assert.equal(router.prev(), "reset")
-  assert.equal(router.next(), "voice")
-  assert.equal(router.prev(), "reset")
-  assert.equal(router.prev(), "clear")
+  assert.deepEqual([router.next(), router.next(), router.next(), router.next()], ["transcription shortcut", "transcription shortcut", "enter", "transcription shortcut"])
+  assert.equal(router.prev(), "reset next position")
+  assert.equal(router.next(), "transcription shortcut")
+  assert.equal(router.prev(), "reset next position")
+  assert.equal(router.prev(), "clear input")
   router.next()
   router.next()
   router.stateChanged()
-  assert.equal(router.next(), "voice")
-  assert.equal(router.prev(), "reset")
+  assert.equal(router.next(), "transcription shortcut")
+  assert.equal(router.prev(), "reset next position")
 })
 
 test("rejects unsupported providers", () => {
