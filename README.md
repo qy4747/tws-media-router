@@ -82,7 +82,8 @@ https://github.com/qy4747/tws-media-router
 6. 检查我使用的转录软件，并确认它用于开始/结束录制的全局快捷键。在转录软件和 config/router.ini 的 [transcription_shortcut] press/release 中设置完全相同的按键；不要假定必须是 Left Ctrl + Left Alt + Up，也不要把软件名称硬编码进代码。
 7. 保持默认媒体键语义：Playing 时完全放行；Idle 时接管；Unknown 时必须 fail-open。不要添加窗口自动聚焦。
 8. 保持默认操作节奏：连续两次 Next 分别触发录制开始和录制结束，第三次 Next 发送 Enter；Prev 第一次重置该循环并保留文字，第二次清空输入框。除非我明确要求，否则不要改变。
-9. 完成后告诉我配置文件位置、启动方法和一套实机验证步骤。不要启动会抢占按键的 AHK 实例，等我确认后再启动。
+9. 创建当前用户级 Windows 开机启动项，在我登录 Windows 后自动启动 automation\\tws-media-router.ahk。优先使用当前用户 Startup 文件夹中的快捷方式，并确保它调用 AutoHotkey v2；不要要求管理员权限。
+10. 完成后告诉我配置文件位置、启动项位置、手动启动方法和一套实机验证步骤。不要在当前会话中启动会抢占按键的 AHK 实例，等我确认后再启动。
 ```
 
 如果未来需要用声音电平判断播放状态，可让 agent 参考 `router.ini` 中被注释的 `[audio_level]` 提示；当前版本不会执行这部分逻辑。
