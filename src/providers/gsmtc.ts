@@ -73,7 +73,11 @@ export class GsmtcProvider extends EventEmitter {
   }
 
   private emitState(state: PlayerState): void {
-    if (state === this.state) return
+    if (state === this.state) {
+      this.emit("heartbeat")
+      return
+    }
+
     this.state = state
     this.emit("state", state)
   }
