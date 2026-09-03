@@ -15,23 +15,24 @@ TWS Media Router 会判断播放器当前是否正在播放，并选择性接管
 默认动作：
 
 - 连续按 `Media_Next`：语音输入 → 语音输入 → Enter 发送，然后循环。
-- 第一次按 `Media_Prev`：重置 Next 循环，保留已输入文本。
-- 第二次按 `Media_Prev`：发送 `Ctrl+A`、Backspace，清空当前输入框。
+- 第一次按 `Media_Prev`：重置 Next 循环，保留已输入文本，并记录当前前台窗口。
+- 第二次按 `Media_Prev`：只有前台窗口仍与第一次相同时才发送 `Ctrl+A`、Backspace；如果焦点已切到其他窗口，则取消清空并重置 Prev 循环。
 
 脚本不会主动激活或聚焦任何窗口。使用时请让目标输入框保持焦点。
 
 ## 播放状态来源
 
 - `netease`（默认）：读取网易云音乐 `cloudmusic.elog`。
-- `gsmtc`：读取 Windows 当前 GSMTC 媒体会话。
+- `gsmtc`：读取 Windows 当前 GSMTC 媒体会话，需要 Windows 10 1809 或更高版本。
 
-无法读取、没有可靠状态或 detector 退出时都会返回 `Unknown`，媒体键保持原功能。
+无法读取、没有可靠状态、detector 退出，或者超过 `stale_after_ms` 没有收到 detector 新鲜度信号时，媒体键都会保持原功能。
 
 ## 环境要求
 
-- Windows 10 1809 或更高版本
+- Windows
 - Node.js 20.6 或更高版本
 - AutoHotkey v2
+- 使用 `netease` 时需要网易云音乐桌面客户端及其 `cloudmusic.elog`
 
 仓库不包含 Node.js 或 AutoHotkey 安装包。可以手动安装，也可以把下面的提示词交给目标环境中的 agent，让它完成克隆、依赖检查、构建和配置。
 
@@ -57,7 +58,7 @@ automation\tws-media-router.ahk
 所有个性化设置都在 [`config/router.ini`](config/router.ini)：
 
 - 播放状态来源：`netease` 或 `gsmtc`
-- 轮询间隔
+- 轮询与 detector 失效超时
 - 语音/转录软件的全局快捷键
 - 清空输入框使用的按键
 
@@ -80,8 +81,8 @@ https://github.com/qy4747/tws-media-router
 4. 运行 npm install 和 npm test。
 5. 根据这台电脑实际使用的播放器选择 player.provider：网易云音乐用 netease，其他支持系统媒体会话的播放器优先尝试 gsmtc。
 6. 检查我使用的转录软件，并确认它用于开始/结束录制的全局快捷键。在转录软件和 config/router.ini 的 [transcription_shortcut] press/release 中设置完全相同的按键；不要假定必须是 Left Ctrl + Left Alt + Up，也不要把软件名称硬编码进代码。
-7. 保持默认媒体键语义：Playing 时完全放行；Idle 时接管；Unknown 时必须 fail-open。不要添加窗口自动聚焦。
-8. 保持默认操作节奏：连续两次 Next 分别触发录制开始和录制结束，第三次 Next 发送 Enter；Prev 第一次重置该循环并保留文字，第二次清空输入框。除非我明确要求，否则不要改变。
+7. 保持默认媒体键语义：Playing 时完全放行；Idle 时接管；Unknown、detector 退出或状态过期时必须 fail-open。不要添加窗口自动聚焦。
+8. 保持默认操作节奏：连续两次 Next 分别触发录制开始和录制结束，第三次 Next 发送 Enter；Prev 第一次重置该循环并保留文字，第二次只有仍处于同一前台窗口时才清空输入框。除非我明确要求，否则不要改变。
 9. 创建当前用户级 Windows 开机启动项，在我登录 Windows 后自动启动 automation\\tws-media-router.ahk。优先使用当前用户 Startup 文件夹中的快捷方式，并确保它调用 AutoHotkey v2；不要要求管理员权限。
 10. 完成后告诉我配置文件位置、启动项位置、手动启动方法和一套实机验证步骤。不要在当前会话中启动会抢占按键的 AHK 实例，等我确认后再启动。
 ```
