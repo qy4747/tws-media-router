@@ -24,6 +24,7 @@ function Get-Manager {
 
 $manager = $null
 $lastStatus = $null
+$lastOutputAt = 0L
 
 while ($true) {
     try {
@@ -44,11 +45,12 @@ while ($true) {
         $status = "Error"
     }
 
-    if ($status -ne $lastStatus) {
+    $now = [Environment]::TickCount64
+    if ($status -ne $lastStatus -or ($now - $lastOutputAt) -ge 1000) {
         Write-Output $status
         $lastStatus = $status
+        $lastOutputAt = $now
     }
 
     Start-Sleep -Milliseconds $PollIntervalMs
 }
-
