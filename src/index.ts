@@ -21,6 +21,9 @@ const provider =
 provider.on("state", (state) => {
   console.log(state)
 })
+provider.on("heartbeat", () => {
+  console.log(".")
+})
 
 try {
   await provider.start()
