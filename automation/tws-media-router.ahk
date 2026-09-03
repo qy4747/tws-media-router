@@ -1,12 +1,14 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #UseHook
+#Include router-state.ahk
 
 PROJECT_DIR := A_ScriptDir "\.."
 CONFIG_FILE := PROJECT_DIR "\config\router.ini"
 
 DETECTOR_COMMAND := IniRead(CONFIG_FILE, "detector", "command", "npm start")
 POLL_INTERVAL_MS := ReadInteger("detector", "poll_interval_ms", 100, 1)
+DETECTOR_STALE_AFTER_MS := ReadInteger("detector", "stale_after_ms", 3000, 1)
 
 TRANSCRIPTION_PRESS := IniRead(CONFIG_FILE, "transcription_shortcut", "press", "{LCtrl down}{LAlt down}{Up down}")
 TRANSCRIPTION_RELEASE := IniRead(CONFIG_FILE, "transcription_shortcut", "release", "{Up up}{LAlt up}{LCtrl up}")
@@ -17,10 +19,8 @@ CLEAR_DELETE := IniRead(CONFIG_FILE, "clear", "delete", "{Backspace}")
 CLEAR_DELAY_MS := ReadInteger("clear", "delay_ms", 30)
 
 OUTPUT_FILE := A_Temp "\tws-media-router-" DllCall("GetCurrentProcessId") ".log"
-CloudMusicPlaying := false
-DetectorReady := false
-NextPressCount := 0
-PrevPressCount := 0
+Router := RouterState()
+Detector := DetectorGate(DETECTOR_STALE_AFTER_MS)
 LastReadPosition := 0
 DetectorPid := 0
 
@@ -32,30 +32,33 @@ SetTimer(ReadDetectorOutput, POLL_INTERVAL_MS)
 
 #HotIf ShouldRouteMediaKeys()
 Media_Next::{
-    global NextPressCount, PrevPressCount
-    PrevPressCount := 0
-    NextPressCount := Mod(NextPressCount, 3) + 1
+    global Router
+    action := Router.Next()
 
-    if NextPressCount <= 2
+    if action = "voice"
         TriggerTranscriptionShortcut()
     else
         SendInput("{Enter}")
 }
 
 Media_Prev::{
-    global NextPressCount, PrevPressCount
-    PrevPressCount := Mod(PrevPressCount, 2) + 1
+    global Router
+    action := Router.Prev(WinExist("A"))
 
-    if PrevPressCount = 1
-        NextPressCount := 0
-    else
+    if action = "clear"
         ClearCurrentInput()
 }
 #HotIf
 
 ShouldRouteMediaKeys() {
-    global DetectorReady, DetectorPid, CloudMusicPlaying
-    return DetectorReady && DetectorPid && ProcessExist(DetectorPid) && !CloudMusicPlaying
+    global Detector, DetectorPid, Router
+    pidAlive := DetectorPid && ProcessExist(DetectorPid)
+    decision := Detector.GetRouteDecision(pidAlive, A_TickCount)
+
+    if decision = "reset-pass"
+        Router.Reset()
+
+    return decision = "route"
 }
 
 TriggerTranscriptionShortcut() {
@@ -83,8 +86,7 @@ ReadInteger(section, key, defaultValue, minimum := 0) {
 }
 
 ReadDetectorOutput() {
-    global CloudMusicPlaying, DetectorReady
-    global NextPressCount, PrevPressCount
+    global Detector, Router
     global LastReadPosition, OUTPUT_FILE
 
     if !FileExist(OUTPUT_FILE)
@@ -98,25 +100,10 @@ ReadDetectorOutput() {
 
         while !output.AtEOF {
             line := Trim(output.ReadLine(), " `t`r`n")
-            if line = "Playing" || line = "true"
-                newState := true
-            else if line = "Idle" || line = "false"
-                newState := false
-            else if line = "Unknown" {
-                DetectorReady := false
-                NextPressCount := 0
-                PrevPressCount := 0
-                continue
-            }
-            else
-                continue
+            result := Detector.ApplyLine(line, A_TickCount)
 
-            if !DetectorReady || CloudMusicPlaying != newState {
-                DetectorReady := true
-                CloudMusicPlaying := newState
-                NextPressCount := 0
-                PrevPressCount := 0
-            }
+            if result = "reset"
+                Router.Reset()
         }
 
         LastReadPosition := output.Pos
