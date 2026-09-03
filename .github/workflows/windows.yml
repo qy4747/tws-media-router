@@ -24,7 +24,11 @@ jobs:
       - name: Download AutoHotkey v2
         shell: pwsh
         run: |
-          Invoke-WebRequest https://www.autohotkey.com/download/ahk-v2.zip -OutFile ahk-v2.zip
+          $headers = @{ "User-Agent" = "tws-media-router-ci" }
+          $release = Invoke-RestMethod https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest -Headers $headers
+          $asset = $release.assets | Where-Object { $_.name -match '^AutoHotkey_2\..*\.zip$' } | Select-Object -First 1
+          if (-not $asset) { throw "AutoHotkey v2 zip asset not found" }
+          Invoke-WebRequest $asset.browser_download_url -Headers $headers -OutFile ahk-v2.zip
           Expand-Archive ahk-v2.zip -DestinationPath .ahk
 
       - name: Run AutoHotkey routing tests
