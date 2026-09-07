@@ -18,17 +18,31 @@ const TRACK_STARTS = [
 ]
 const NATIVE_TRACK_START = `【playing】,"native播放资源load完成，开始播放"`
 const PLAY_STATE = /【playing】,"native播放state",(\d+),/
+const SMTC_FROM = /"from"\s*:\s*"smtc"/i
+const SMTC_ACTION = /"action_type"\s*:\s*"play"/i
+const SMTC_TYPE = /"type"\s*:\s*"(play|pause)"/i
 
 function isElogLine(line: string): boolean {
   return HEADER.test(line)
 }
 
-function parseState(line: string): PlayerState | null {
+function parseSmtcState(line: string): PlayerState | null {
+  if (!SMTC_FROM.test(line) || !SMTC_ACTION.test(line)) return null
+
+  const match = line.match(SMTC_TYPE)
+  if (!match) return null
+
+  return match[1].toLowerCase() === "pause" ? "Idle" : "Playing"
+}
+
+export function parseState(line: string): PlayerState | null {
   if (!isElogLine(line)) return null
   if (line.includes(EXIT)) return "Idle"
 
-  const match = line.match(PLAY_STATE)
-  return match ? (Number(match[1]) === 2 ? "Idle" : "Playing") : null
+  const nativeMatch = line.match(PLAY_STATE)
+  if (nativeMatch) return Number(nativeMatch[1]) === 2 ? "Idle" : "Playing"
+
+  return parseSmtcState(line)
 }
 
 export function deriveInitialPlayState(lines: string[]): PlayerState {
@@ -41,6 +55,11 @@ export function deriveInitialPlayState(lines: string[]): PlayerState {
 
     records.unshift(line)
     if (line.includes(EXIT)) return "Idle"
+
+    if (parseSmtcState(line)) {
+      hasTrack = true
+      break
+    }
 
     if (TRACK_STARTS.some((marker) => line.includes(marker))) {
       hasTrack = true
