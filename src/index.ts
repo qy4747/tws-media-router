@@ -21,6 +21,9 @@ const provider =
 provider.on("state", (state) => {
   console.log(state)
 })
+provider.on("action", (action) => {
+  console.log(`SMTC:${action}`)
+})
 provider.on("heartbeat", () => {
   console.log(".")
 })
