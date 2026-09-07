@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 
 type PlayerState = "Playing" | "Idle" | "Unknown"
+export type SmtcAction = "next" | "prev" | "play" | "pause"
 
 const INITIAL_TAIL_BYTES = 1024 * 1024
 const READ_CHUNK_BYTES = 64 * 1024
@@ -21,9 +22,25 @@ const PLAY_STATE = /【playing】,"native播放state",(\d+),/
 const SMTC_FROM = /"from"\s*:\s*"smtc"/i
 const SMTC_ACTION = /"action_type"\s*:\s*"play"/i
 const SMTC_TYPE = /"type"\s*:\s*"(play|pause)"/i
+const SMTC_POINT = /"action"\s*:\s*"_pc_smtc"/i
+const SMTC_TRANSPORT_ACTION = /"action_type"\s*:\s*"(next|prev|previous)"/i
 
 function isElogLine(line: string): boolean {
   return HEADER.test(line)
+}
+
+export function parseSmtcAction(line: string): SmtcAction | null {
+  if (!isElogLine(line)) return null
+
+  if (SMTC_POINT.test(line)) {
+    const match = line.match(SMTC_TRANSPORT_ACTION)
+    if (!match) return null
+    return match[1].toLowerCase() === "next" ? "next" : "prev"
+  }
+
+  if (!SMTC_FROM.test(line) || !SMTC_ACTION.test(line)) return null
+  const match = line.match(SMTC_TYPE)
+  return match ? (match[1].toLowerCase() as "play" | "pause") : null
 }
 
 function parseSmtcState(line: string): PlayerState | null {
@@ -222,7 +239,10 @@ export class NeteasePlayStateDetector extends EventEmitter {
           const result = await this.readRange(start, targetSize, this.pendingBytes)
           this.pendingBytes = new Uint8Array(result.pendingBytes)
           this.fileSize = targetSize
-          for (const state of result.states) this.emitState(state)
+          for (const event of result.events) {
+            if (event.kind === "action") this.emit("action", event.value)
+            else this.emitState(event.value)
+          }
         }
       }
     } catch {
@@ -238,10 +258,19 @@ export class NeteasePlayStateDetector extends EventEmitter {
     start: number,
     endExclusive: number,
     initialPending: Uint8Array
-  ): Promise<{ states: PlayerState[]; pendingBytes: Uint8Array }> {
+  ): Promise<{
+    events: Array<
+      | { kind: "action"; value: SmtcAction }
+      | { kind: "state"; value: PlayerState }
+    >
+    pendingBytes: Uint8Array
+  }> {
     const handle = await fsPromises.open(this.filePath, "r")
     const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES)
-    const states: PlayerState[] = []
+    const events: Array<
+      | { kind: "action"; value: SmtcAction }
+      | { kind: "state"; value: PlayerState }
+    > = []
     let pendingBytes = new Uint8Array(initialPending)
     let position = start
 
@@ -256,8 +285,12 @@ export class NeteasePlayStateDetector extends EventEmitter {
         pendingBytes = new Uint8Array(split.pending)
 
         for (const line of split.lines) {
-          const state = parseState(line.trim())
-          if (state) states.push(state)
+          const trimmed = line.trim()
+          const action = parseSmtcAction(trimmed)
+          if (action) events.push({ kind: "action", value: action })
+
+          const state = parseState(trimmed)
+          if (state) events.push({ kind: "state", value: state })
         }
 
         position += bytesRead
@@ -266,7 +299,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
       await handle.close()
     }
 
-    return { states, pendingBytes }
+    return { events, pendingBytes }
   }
 
   private emitState(state: PlayerState, force = false): void {
