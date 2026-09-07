@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   deriveInitialPlayState,
+  parseState,
   splitUtf8Lines,
 } from "../build/detector/netease-play-state.js"
 
@@ -19,6 +20,18 @@ test("derives Unknown without reliable NetEase playback evidence", () => {
   assert.equal(deriveInitialPlayState([track, pause]), "Idle")
   assert.equal(deriveInitialPlayState([track, pause, play]), "Playing")
   assert.equal(deriveInitialPlayState([track, row(`【app】,{"actionId":"exitApp"}`)]), "Idle")
+})
+
+test("parses NetEase SMTC play and pause elog events", () => {
+  const pause = row(`【action】,{"data":{"resourceType":"track","action_type":"play","type":"pause","from":"smtc"}}`)
+  const play = row(`【action】,{"data":{"resourceType":"track","action_type":"play","type":"play","from":"smtc"}}`)
+  const unrelated = row(`【action】,{"data":{"action_type":"play","type":"pause","from":"ui"}}`)
+
+  assert.equal(parseState(pause), "Idle")
+  assert.equal(parseState(play), "Playing")
+  assert.equal(parseState(unrelated), null)
+  assert.equal(deriveInitialPlayState([pause]), "Idle")
+  assert.equal(deriveInitialPlayState([play]), "Playing")
 })
 
 test("preserves partial UTF-8 lines across arbitrary chunks", () => {
