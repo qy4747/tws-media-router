@@ -21,6 +21,7 @@ CLEAR_DELAY_MS := ReadInteger("clear", "delay_ms", 30)
 OUTPUT_FILE := A_Temp "\tws-media-router-" DllCall("GetCurrentProcessId") ".log"
 Router := RouterState()
 Detector := DetectorGate(DETECTOR_STALE_AFTER_MS)
+SmtcCompat := SmtcCompatState()
 LastReadPosition := 0
 DetectorPid := 0
 
@@ -31,23 +32,8 @@ OnExit(StopDetector)
 SetTimer(ReadDetectorOutput, POLL_INTERVAL_MS)
 
 #HotIf ShouldRouteMediaKeys()
-Media_Next::{
-    global Router
-    action := Router.Next()
-
-    if action = "voice"
-        TriggerTranscriptionShortcut()
-    else
-        SendInput("{Enter}")
-}
-
-Media_Prev::{
-    global Router
-    action := Router.Prev(WinExist("A"))
-
-    if action = "clear"
-        ClearCurrentInput()
-}
+Media_Next::ApplyNextRouterAction()
+Media_Prev::ApplyPrevRouterAction()
 #HotIf
 
 ShouldRouteMediaKeys() {
@@ -63,6 +49,45 @@ ShouldRouteMediaKeys() {
         Router.Reset()
 
     return decision = "route"
+}
+
+ApplyNextRouterAction() {
+    global Router
+    action := Router.Next()
+
+    if action = "voice"
+        TriggerTranscriptionShortcut()
+    else
+        SendInput("{Enter}")
+}
+
+ApplyPrevRouterAction() {
+    global Router
+    action := Router.Prev(WinExist("A"))
+
+    if action = "clear"
+        ClearCurrentInput()
+}
+
+HandleSmtcAction(action) {
+    global SmtcCompat
+    SmtcCompat.HandleAction(action, ShouldRouteMediaKeys(), A_TickCount)
+}
+
+PerformSmtcNextCompensation() {
+    SendInput("{Media_Prev}")
+    Sleep(80)
+    SendInput("{Media_Play_Pause}")
+    Sleep(50)
+    ApplyNextRouterAction()
+}
+
+PerformSmtcPrevCompensation() {
+    SendInput("{Media_Next}")
+    Sleep(80)
+    SendInput("{Media_Play_Pause}")
+    Sleep(50)
+    ApplyPrevRouterAction()
 }
 
 TriggerTranscriptionShortcut() {
@@ -90,7 +115,7 @@ ReadInteger(section, key, defaultValue, minimum := 0) {
 }
 
 ReadDetectorOutput() {
-    global Detector, Router
+    global Detector, Router, SmtcCompat
     global LastReadPosition, OUTPUT_FILE
 
     if !FileExist(OUTPUT_FILE)
@@ -104,9 +129,33 @@ ReadDetectorOutput() {
 
         while !output.AtEOF {
             line := Trim(output.ReadLine(), " `t`r`n")
-            result := Detector.ApplyLine(line, A_TickCount)
+            tick := A_TickCount
 
-            if result = "reset"
+            if InStr(line, "SMTC:") = 1 {
+                HandleSmtcAction(SubStr(line, 6))
+                continue
+            }
+
+            if line = "." && SmtcCompat.Expire(tick)
+                Router.Reset()
+
+            result := Detector.ApplyLine(line, tick)
+            smtcResult := "normal"
+
+            if line = "Playing" || line = "Idle" || line = "Unknown"
+                smtcResult := SmtcCompat.HandleState(line, tick)
+
+            if smtcResult = "compensate-next"
+                SetTimer(PerformSmtcNextCompensation, -1)
+            else if smtcResult = "compensate-prev"
+                SetTimer(PerformSmtcPrevCompensation, -1)
+
+            suppressReset := smtcResult = "compensate-next"
+                || smtcResult = "compensate-prev"
+                || smtcResult = "complete"
+                || smtcResult = "active"
+
+            if result = "reset" && !suppressReset
                 Router.Reset()
         }
 
