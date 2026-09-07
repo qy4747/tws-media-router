@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   deriveInitialPlayState,
+  parseSmtcAction,
   parseState,
   splitUtf8Lines,
 } from "../build/detector/netease-play-state.js"
@@ -32,6 +33,20 @@ test("parses NetEase SMTC play and pause elog events", () => {
   assert.equal(parseState(unrelated), null)
   assert.equal(deriveInitialPlayState([pause]), "Idle")
   assert.equal(deriveInitialPlayState([play]), "Playing")
+})
+
+test("parses NetEase SMTC transport actions", () => {
+  const next = row(`【曙光点位】,{"action":"_pc_smtc","time":"1","data":{"resourceid":"1","resourcetype":"track","action_type":"next"}}`)
+  const prev = row(`【曙光点位】,{"action":"_pc_smtc","time":"1","data":{"resourceid":"1","resourcetype":"track","action_type":"previous"}}`)
+  const pause = row(`【action】,{"data":{"resourceType":"track","action_type":"play","type":"pause","from":"smtc"}}`)
+  const play = row(`【action】,{"data":{"resourceType":"track","action_type":"play","type":"play","from":"smtc"}}`)
+
+  assert.equal(parseSmtcAction(next), "next")
+  assert.equal(parseSmtcAction(prev), "prev")
+  assert.equal(parseSmtcAction(pause), "pause")
+  assert.equal(parseSmtcAction(play), "play")
+  assert.equal(parseState(next), null)
+  assert.equal(parseState(pause), "Idle")
 })
 
 test("preserves partial UTF-8 lines across arbitrary chunks", () => {
