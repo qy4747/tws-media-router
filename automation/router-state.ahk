@@ -91,3 +91,118 @@ class DetectorGate {
         return this.PlayerPlaying ? "pass" : "route"
     }
 }
+
+
+class SmtcCompatState {
+    __New(cycleTimeoutMs := 3000, echoTimeoutMs := 2000) {
+        this.CycleTimeoutMs := cycleTimeoutMs
+        this.EchoTimeoutMs := echoTimeoutMs
+        this.ExpectedActions := []
+        this.ExpectedDeadlineTick := 0
+        this.ResetCycle()
+    }
+
+    ResetCycle() {
+        this.Active := false
+        this.PendingAction := ""
+        this.AwaitIdle := false
+        this.StartedTick := 0
+    }
+
+    Reset() {
+        this.ResetCycle()
+        this.ExpectedActions := []
+        this.ExpectedDeadlineTick := 0
+    }
+
+    NormalizeAction(action) {
+        normalized := StrLower(action)
+        return normalized = "previous" ? "prev" : normalized
+    }
+
+    Expire(tick) {
+        cycleExpired := false
+
+        if this.Active && tick - this.StartedTick > this.CycleTimeoutMs {
+            this.ResetCycle()
+            cycleExpired := true
+        }
+
+        if this.ExpectedActions.Length && tick > this.ExpectedDeadlineTick {
+            this.ExpectedActions := []
+            this.ExpectedDeadlineTick := 0
+        }
+
+        return cycleExpired
+    }
+
+    HandleAction(action, canRoute, tick) {
+        this.Expire(tick)
+        action := this.NormalizeAction(action)
+
+        if this.ExpectedActions.Length {
+            if action = this.ExpectedActions[1] {
+                this.ExpectedActions.RemoveAt(1)
+                if !this.ExpectedActions.Length
+                    this.ExpectedDeadlineTick := 0
+                return "echo"
+            }
+
+            this.ExpectedActions := []
+            this.ExpectedDeadlineTick := 0
+        }
+
+        if action != "next" && action != "prev"
+            return "ignore"
+
+        if !canRoute || this.Active
+            return "ignore"
+
+        this.Active := true
+        this.PendingAction := action
+        this.AwaitIdle := false
+        this.StartedTick := tick
+        return action = "next" ? "pending-next" : "pending-prev"
+    }
+
+    HandleState(state, tick) {
+        if this.Expire(tick)
+            return "expired"
+
+        if state = "Unknown" {
+            this.Reset()
+            return "abort"
+        }
+
+        if !this.Active
+            return "normal"
+
+        if state = "Playing" && this.PendingAction != "" {
+            action := this.PendingAction
+            this.PendingAction := ""
+            this.AwaitIdle := true
+
+            if action = "next"
+                this.Expect(["prev", "pause"], tick)
+            else
+                this.Expect(["next", "pause"], tick)
+
+            return action = "next" ? "compensate-next" : "compensate-prev"
+        }
+
+        if state = "Idle" && this.AwaitIdle {
+            this.ResetCycle()
+            return "complete"
+        }
+
+        return "active"
+    }
+
+    Expect(actions, tick) {
+        this.ExpectedActions := []
+        for action in actions
+            this.ExpectedActions.Push(this.NormalizeAction(action))
+
+        this.ExpectedDeadlineTick := tick + this.EchoTimeoutMs
+    }
+}
