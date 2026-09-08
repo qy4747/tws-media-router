@@ -42,3 +42,18 @@ test("NetEase raw observations are forwarded separately from deduplicated state"
   assert.match(detector, /this\.emit\("observation", event\.value\)\s+this\.emitState\(event\.value\)/)
   assert.match(index, /provider\.on\("observation",[\s\S]*?console\.log\(`OBS:\$\{state\}`\)/)
 })
+
+test("active command ownership survives Playing without weakening fail-open", async () => {
+  const ahk = await readFile(new URL("../automation/tws-media-router.ahk", import.meta.url), "utf8")
+
+  assert.match(
+    ahk,
+    /GetRouteDecision\(pidAlive, A_TickCount, Router\.CommandActive\)/,
+    "routing must allow a healthy active command to continue while Playing"
+  )
+  assert.match(
+    ahk,
+    /suppressReset := \(SmtcCompat\.GuardActive \|\| Router\.CommandActive\) && line != "Unknown"/,
+    "Playing and Idle transitions must not reset an active command session"
+  )
+})
