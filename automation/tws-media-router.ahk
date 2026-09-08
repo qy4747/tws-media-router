@@ -53,7 +53,7 @@ ShouldRouteMediaKeys() {
     if DetectorPid && !pidAlive
         DetectorPid := 0
 
-    decision := Detector.GetRouteDecision(pidAlive, A_TickCount)
+    decision := Detector.GetRouteDecision(pidAlive, A_TickCount, Router.CommandActive)
 
     if decision = "reset-pass"
         Router.Reset()
@@ -208,7 +208,7 @@ ReadDetectorOutput() {
             if line = "Unknown"
                 ApplySmtcStateResult(SmtcCompat.HandleState(line, tick))
 
-            suppressReset := SmtcCompat.GuardActive && line != "Unknown"
+            suppressReset := (SmtcCompat.GuardActive || Router.CommandActive) && line != "Unknown"
 
             if result = "reset" && !suppressReset {
                 Trace("router", "reset")
