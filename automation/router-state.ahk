@@ -157,11 +157,12 @@ class SmtcCompatState {
 
         if this.ExpectedActions.Length && action = this.ExpectedActions[1] {
             this.ExpectedActions.RemoveAt(1)
-            if action = "pause"
+            pauseConfirmed := action = "pause"
+            if pauseConfirmed
                 this.PauseAcknowledged := true
             if !this.ExpectedActions.Length
                 this.ExpectedDeadlineTick := 0
-            return "echo"
+            return pauseConfirmed ? "pause-confirmed" : "echo"
         }
 
         if action = "play"
