@@ -7,13 +7,21 @@ class RouterState {
         this.NextPressCount := 0
         this.PrevPressCount := 0
         this.PrevWindowHwnd := 0
+        this.CommandActive := false
     }
 
     Next() {
         this.PrevPressCount := 0
         this.PrevWindowHwnd := 0
         this.NextPressCount := Mod(this.NextPressCount, 3) + 1
-        return this.NextPressCount <= 2 ? "voice" : "enter"
+
+        if this.NextPressCount <= 2 {
+            this.CommandActive := true
+            return "voice"
+        }
+
+        this.CommandActive := false
+        return "enter"
     }
 
     Prev(activeHwnd) {
@@ -22,16 +30,19 @@ class RouterState {
         if this.PrevPressCount = 1 {
             this.NextPressCount := 0
             this.PrevWindowHwnd := activeHwnd
+            this.CommandActive := true
             return "reset"
         }
 
         if !this.PrevWindowHwnd || activeHwnd != this.PrevWindowHwnd {
             this.PrevPressCount := 0
             this.PrevWindowHwnd := 0
+            this.CommandActive := false
             return "cancel"
         }
 
         this.PrevWindowHwnd := 0
+        this.CommandActive := false
         return "clear"
     }
 }
@@ -71,7 +82,7 @@ class DetectorGate {
         return changed ? "reset" : "state"
     }
 
-    GetRouteDecision(pidAlive, tick) {
+    GetRouteDecision(pidAlive, tick, allowPlaying := false) {
         if !pidAlive {
             if this.Ready {
                 this.Ready := false
@@ -88,7 +99,7 @@ class DetectorGate {
             return "reset-pass"
         }
 
-        return this.PlayerPlaying ? "pass" : "route"
+        return this.PlayerPlaying && !allowPlaying ? "pass" : "route"
     }
 }
 
