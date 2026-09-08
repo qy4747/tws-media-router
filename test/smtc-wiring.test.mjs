@@ -57,3 +57,23 @@ test("active command ownership survives Playing without weakening fail-open", as
     "Playing and Idle transitions must not reset an active command session"
   )
 })
+
+test("SMTC Next ordering keeps compensation outside the recording interval", async () => {
+  const ahk = await readFile(new URL("../automation/tws-media-router.ahk", import.meta.url), "utf8")
+
+  assert.match(
+    ahk,
+    /if decision = "route-next"\s+BeginSmtcNextRouterAction\(\)/,
+    "SMTC Next phase must be chosen synchronously before later playback observations are handled"
+  )
+  assert.match(
+    ahk,
+    /if action = "voice-start" \{[\s\S]*?DeferredNextAction := action[\s\S]*?return/,
+    "voice start must wait for compensation to settle"
+  )
+  assert.match(
+    ahk,
+    /else if result = "settled" && DeferredNextAction != "" \{[\s\S]*?ReleaseGuard\(\)[\s\S]*?ExecuteNextRouterAction/,
+    "guard must be released before deferred recording starts"
+  )
+})
