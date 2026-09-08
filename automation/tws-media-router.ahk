@@ -26,6 +26,7 @@ TRACE_FILE := A_Temp "\tws-media-router-trace-" PROCESS_ID ".log"
 Router := RouterState()
 Detector := DetectorGate(DETECTOR_STALE_AFTER_MS)
 SmtcCompat := SmtcCompatState(SMTC_GUARD_IDLE_MS)
+DeferredNextAction := ""
 LastReadPosition := 0
 DetectorPid := 0
 
@@ -65,10 +66,16 @@ ApplyNextRouterAction() {
     global Router
     action := Router.Next()
     Trace("router_next", action)
+    ExecuteNextRouterAction(action)
+}
 
-    if action = "voice"
+ExecuteNextRouterAction(action) {
+    if action = "voice-start" || action = "voice-stop" {
         TriggerTranscriptionShortcut()
-    else {
+        return
+    }
+
+    if action = "enter" {
         Trace("send", "Enter")
         SendInput("{Enter}")
     }
@@ -91,11 +98,25 @@ HandleSmtcAction(action) {
     Trace("smtc_decision", decision)
 
     if decision = "route-next"
-        SetTimer(ApplyNextRouterAction, -1)
+        SetTimer(BeginSmtcNextRouterAction, -1)
     else if decision = "route-prev"
         SetTimer(ApplyPrevRouterAction, -1)
     else if decision = "force-pause"
         SetTimer(ForceGuardPause, -1)
+}
+
+BeginSmtcNextRouterAction() {
+    global Router, DeferredNextAction
+    action := Router.Next()
+    Trace("router_next", action)
+
+    if action = "voice-start" {
+        DeferredNextAction := action
+        Trace("router_deferred", action)
+        return
+    }
+
+    ExecuteNextRouterAction(action)
 }
 
 PerformSmtcRestorePrev() {
@@ -154,6 +175,7 @@ ReadInteger(section, key, defaultValue, minimum := 0) {
 }
 
 ApplySmtcStateResult(result) {
+    global SmtcCompat, DeferredNextAction
     Trace("guard_state", result)
 
     if result = "compensate-next"
@@ -162,10 +184,17 @@ ApplySmtcStateResult(result) {
         SetTimer(PerformSmtcRestorePrev, -1)
     else if result = "force-pause"
         SetTimer(ForceGuardPause, -1)
+    else if result = "settled" && DeferredNextAction != "" {
+        action := DeferredNextAction
+        DeferredNextAction := ""
+        SmtcCompat.ReleaseGuard()
+        Trace("guard", "released-before-recording")
+        SetTimer(() => ExecuteNextRouterAction(action), -1)
+    }
 }
 
 ReadDetectorOutput() {
-    global Detector, Router, SmtcCompat
+    global Detector, Router, SmtcCompat, DeferredNextAction
     global LastReadPosition, OUTPUT_FILE
 
     if !FileExist(OUTPUT_FILE)
@@ -205,8 +234,10 @@ ReadDetectorOutput() {
 
             result := Detector.ApplyLine(line, tick)
 
-            if line = "Unknown"
+            if line = "Unknown" {
+                DeferredNextAction := ""
                 ApplySmtcStateResult(SmtcCompat.HandleState(line, tick))
+            }
 
             suppressReset := (SmtcCompat.GuardActive || Router.CommandActive) && line != "Unknown"
 
