@@ -164,7 +164,7 @@ export class NeteasePlayStateDetector extends EventEmitter {
       this.pendingBytes = new Uint8Array(initial.pendingBytes)
       this.emitState(initial.state, true)
 
-      fs.watchFile(this.filePath, { interval: 300 }, this.watchListener)
+      fs.watchFile(this.filePath, { interval: 50 }, this.watchListener)
       this.heartbeatTimer = setInterval(() => this.emit("heartbeat"), HEARTBEAT_INTERVAL_MS)
 
       const current = await fsPromises.stat(this.filePath)
