@@ -91,7 +91,7 @@ ApplyPrevRouterAction() {
 }
 
 HandleSmtcAction(action) {
-    global SmtcCompat
+    global SmtcCompat, DeferredNextAction
     tick := A_TickCount
     Trace("smtc_action", action)
     decision := SmtcCompat.HandleAction(action, ShouldRouteMediaKeys(), tick)
@@ -103,6 +103,13 @@ HandleSmtcAction(action) {
         SetTimer(ApplyPrevRouterAction, -1)
     else if decision = "force-pause"
         SetTimer(ForceGuardPause, -1)
+    else if decision = "pause-confirmed" && DeferredNextAction != "" {
+        action := DeferredNextAction
+        DeferredNextAction := ""
+        SmtcCompat.ReleaseGuard()
+        Trace("guard", "released-on-pause-confirmed")
+        ExecuteNextRouterAction(action)
+    }
 }
 
 BeginSmtcNextRouterAction() {
