@@ -98,7 +98,7 @@ HandleSmtcAction(action) {
         SetTimer(ForceGuardPause, -1)
 }
 
-PerformSmtcNextCompensation() {
+PerformSmtcRestorePrev() {
     global SmtcCompat
     SmtcCompat.Expect(["prev", "pause"], A_TickCount)
     Trace("compensate_send", "Media_Prev")
@@ -108,7 +108,7 @@ PerformSmtcNextCompensation() {
     SendInput("{Media_Play_Pause}")
 }
 
-PerformSmtcPrevCompensation() {
+PerformSmtcRestoreNext() {
     global SmtcCompat
     SmtcCompat.Expect(["next", "pause"], A_TickCount)
     Trace("compensate_send", "Media_Next")
@@ -153,6 +153,17 @@ ReadInteger(section, key, defaultValue, minimum := 0) {
     return value + 0
 }
 
+ApplySmtcStateResult(result) {
+    Trace("guard_state", result)
+
+    if result = "compensate-next"
+        SetTimer(PerformSmtcRestoreNext, -1)
+    else if result = "compensate-prev"
+        SetTimer(PerformSmtcRestorePrev, -1)
+    else if result = "force-pause"
+        SetTimer(ForceGuardPause, -1)
+}
+
 ReadDetectorOutput() {
     global Detector, Router, SmtcCompat
     global LastReadPosition, OUTPUT_FILE
@@ -175,7 +186,15 @@ ReadDetectorOutput() {
                 continue
             }
 
+            if InStr(line, "OBS:") = 1 {
+                observedState := SubStr(line, 5)
+                Trace("detector_observation", observedState)
+                ApplySmtcStateResult(SmtcCompat.HandleState(observedState, tick))
+                continue
+            }
+
             if line = "." {
+                Detector.ApplyLine(line, tick)
                 if SmtcCompat.Expire(tick)
                     Trace("guard", "expired")
                 continue
@@ -185,19 +204,9 @@ ReadDetectorOutput() {
                 Trace("detector_state", line)
 
             result := Detector.ApplyLine(line, tick)
-            smtcResult := "normal"
 
-            if line = "Playing" || line = "Idle" || line = "Unknown" {
-                smtcResult := SmtcCompat.HandleState(line, tick)
-                Trace("guard_state", smtcResult)
-            }
-
-            if smtcResult = "compensate-next"
-                SetTimer(PerformSmtcNextCompensation, -1)
-            else if smtcResult = "compensate-prev"
-                SetTimer(PerformSmtcPrevCompensation, -1)
-            else if smtcResult = "force-pause"
-                SetTimer(ForceGuardPause, -1)
+            if line = "Unknown"
+                ApplySmtcStateResult(SmtcCompat.HandleState(line, tick))
 
             suppressReset := SmtcCompat.GuardActive && line != "Unknown"
 
