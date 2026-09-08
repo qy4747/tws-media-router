@@ -56,6 +56,18 @@ AssertEqual(smtc.HandleAction("previous", false, 1100), "echo", "self Previous e
 AssertEqual(smtc.HandleAction("pause", false, 1150), "echo", "self Pause echo is consumed")
 AssertEqual(smtc.HandleState("Idle", 1200), "guard", "guard survives compensation returning to Idle")
 
+retry := SmtcCompatState(1500, 750)
+AssertEqual(retry.HandleAction("next", true, 5000), "route-next", "retry scenario opens guard")
+AssertEqual(retry.HandleState("Playing", 5050), "compensate-prev", "retry scenario starts restore")
+retry.Expect(["prev", "pause"], 5060)
+AssertEqual(retry.HandleState("Playing", 5070), "guard", "repeated Playing is ignored while compensation has no Pause acknowledgement")
+AssertEqual(retry.HandleAction("prev", false, 5080), "echo", "restore echo is consumed before Pause")
+AssertEqual(retry.HandleAction("pause", false, 5090), "echo", "Pause acknowledgement is recorded")
+AssertEqual(retry.HandleState("Playing", 5100), "force-pause", "Playing after acknowledged Pause is forced back to Pause")
+retry.Expect(["pause"], 5110)
+AssertEqual(retry.HandleAction("pause", false, 5120), "echo", "forced Pause acknowledgement is consumed")
+AssertEqual(retry.HandleState("Idle", 5130), "guard", "successful retry returns to guarded Idle")
+
 AssertEqual(smtc.HandleAction("next", false, 1300), "route-next", "a second Next routes even during transient non-idle guard state")
 AssertEqual(smtc.GuardDeadlineTick, 2800, "user Next refreshes the sliding guard deadline")
 AssertEqual(smtc.HandleAction("play", false, 1350), "force-pause", "Play inside the guard is converted to Pause")
