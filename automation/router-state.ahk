@@ -15,9 +15,14 @@ class RouterState {
         this.PrevWindowHwnd := 0
         this.NextPressCount := Mod(this.NextPressCount, 3) + 1
 
-        if this.NextPressCount <= 2 {
+        if this.NextPressCount = 1 {
             this.CommandActive := true
-            return "voice"
+            return "voice-start"
+        }
+
+        if this.NextPressCount = 2 {
+            this.CommandActive := true
+            return "voice-stop"
         }
 
         this.CommandActive := false
@@ -112,13 +117,17 @@ class SmtcCompatState {
     }
 
     Reset() {
+        this.ReleaseGuard()
+        this.ExpectedActions := []
+        this.ExpectedDeadlineTick := 0
+    }
+
+    ReleaseGuard() {
         this.GuardActive := false
         this.GuardDeadlineTick := 0
         this.PendingRestores := []
         this.CompensationInFlight := false
         this.PauseAcknowledged := false
-        this.ExpectedActions := []
-        this.ExpectedDeadlineTick := 0
     }
 
     NormalizeAction(action) {
@@ -130,11 +139,7 @@ class SmtcCompatState {
         expired := false
 
         if this.GuardActive && tick > this.GuardDeadlineTick {
-            this.GuardActive := false
-            this.GuardDeadlineTick := 0
-            this.PendingRestores := []
-            this.CompensationInFlight := false
-            this.PauseAcknowledged := false
+            this.ReleaseGuard()
             expired := true
         }
 
@@ -221,6 +226,8 @@ class SmtcCompatState {
                 this.CompensationInFlight := true
                 return restore = "prev" ? "compensate-prev" : "compensate-next"
             }
+
+            return "settled"
         }
 
         return "guard"
