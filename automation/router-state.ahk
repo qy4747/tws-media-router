@@ -94,23 +94,17 @@ class DetectorGate {
 
 
 class SmtcCompatState {
-    __New(cycleTimeoutMs := 3000, echoTimeoutMs := 2000) {
-        this.CycleTimeoutMs := cycleTimeoutMs
+    __New(guardIdleMs := 1500, echoTimeoutMs := 750) {
+        this.GuardIdleMs := guardIdleMs
         this.EchoTimeoutMs := echoTimeoutMs
-        this.ExpectedActions := []
-        this.ExpectedDeadlineTick := 0
-        this.ResetCycle()
-    }
-
-    ResetCycle() {
-        this.Active := false
-        this.PendingAction := ""
-        this.AwaitIdle := false
-        this.StartedTick := 0
+        this.Reset()
     }
 
     Reset() {
-        this.ResetCycle()
+        this.GuardActive := false
+        this.GuardDeadlineTick := 0
+        this.PendingRestores := []
+        this.CompensationInFlight := false
         this.ExpectedActions := []
         this.ExpectedDeadlineTick := 0
     }
@@ -121,11 +115,14 @@ class SmtcCompatState {
     }
 
     Expire(tick) {
-        cycleExpired := false
+        expired := false
 
-        if this.Active && tick - this.StartedTick > this.CycleTimeoutMs {
-            this.ResetCycle()
-            cycleExpired := true
+        if this.GuardActive && tick > this.GuardDeadlineTick {
+            this.GuardActive := false
+            this.GuardDeadlineTick := 0
+            this.PendingRestores := []
+            this.CompensationInFlight := false
+            expired := true
         }
 
         if this.ExpectedActions.Length && tick > this.ExpectedDeadlineTick {
@@ -133,69 +130,74 @@ class SmtcCompatState {
             this.ExpectedDeadlineTick := 0
         }
 
-        return cycleExpired
+        return expired
     }
 
-    HandleAction(action, canRoute, tick) {
+    HandleAction(action, canStart, tick) {
         this.Expire(tick)
         action := this.NormalizeAction(action)
 
-        if this.ExpectedActions.Length {
-            if action = this.ExpectedActions[1] {
-                this.ExpectedActions.RemoveAt(1)
-                if !this.ExpectedActions.Length
-                    this.ExpectedDeadlineTick := 0
-                return "echo"
-            }
-
-            this.ExpectedActions := []
-            this.ExpectedDeadlineTick := 0
+        if this.ExpectedActions.Length && action = this.ExpectedActions[1] {
+            this.ExpectedActions.RemoveAt(1)
+            if !this.ExpectedActions.Length
+                this.ExpectedDeadlineTick := 0
+            return "echo"
         }
+
+        if action = "play"
+            return this.GuardActive ? "force-pause" : "ignore"
+
+        if action = "pause"
+            return "ignore"
 
         if action != "next" && action != "prev"
             return "ignore"
 
-        if !canRoute || this.Active
-            return "ignore"
+        if !this.GuardActive {
+            if !canStart
+                return "ignore"
 
-        this.Active := true
-        this.PendingAction := action
-        this.AwaitIdle := false
-        this.StartedTick := tick
-        return action = "next" ? "pending-next" : "pending-prev"
+            this.GuardActive := true
+        }
+
+        this.GuardDeadlineTick := tick + this.GuardIdleMs
+        this.PendingRestores.Push(action = "next" ? "prev" : "next")
+        return action = "next" ? "route-next" : "route-prev"
     }
 
     HandleState(state, tick) {
-        if this.Expire(tick)
-            return "expired"
+        expired := this.Expire(tick)
 
         if state = "Unknown" {
             this.Reset()
             return "abort"
         }
 
-        if !this.Active
-            return "normal"
+        if !this.GuardActive
+            return expired ? "expired" : "normal"
 
-        if state = "Playing" && this.PendingAction != "" {
-            action := this.PendingAction
-            this.PendingAction := ""
-            this.AwaitIdle := true
+        if state = "Playing" {
+            if this.PendingRestores.Length {
+                restore := this.PendingRestores.RemoveAt(1)
+                this.CompensationInFlight := true
+                return restore = "prev" ? "compensate-prev" : "compensate-next"
+            }
 
-            if action = "next"
-                this.Expect(["prev", "pause"], tick)
-            else
-                this.Expect(["next", "pause"], tick)
-
-            return action = "next" ? "compensate-next" : "compensate-prev"
+            this.CompensationInFlight := true
+            return "force-pause"
         }
 
-        if state = "Idle" && this.AwaitIdle {
-            this.ResetCycle()
-            return "complete"
+        if state = "Idle" && this.CompensationInFlight {
+            this.CompensationInFlight := false
+
+            if this.PendingRestores.Length {
+                restore := this.PendingRestores.RemoveAt(1)
+                this.CompensationInFlight := true
+                return restore = "prev" ? "compensate-prev" : "compensate-next"
+            }
         }
 
-        return "active"
+        return "guard"
     }
 
     Expect(actions, tick) {
