@@ -9,6 +9,7 @@ CONFIG_FILE := PROJECT_DIR "\config\router.ini"
 DETECTOR_COMMAND := IniRead(CONFIG_FILE, "detector", "command", "npm start")
 POLL_INTERVAL_MS := ReadInteger("detector", "poll_interval_ms", 100, 1)
 DETECTOR_STALE_AFTER_MS := ReadInteger("detector", "stale_after_ms", 3000, 1)
+SMTC_GUARD_IDLE_MS := ReadInteger("smtc", "guard_idle_ms", 1500, 100)
 
 TRANSCRIPTION_PRESS := IniRead(CONFIG_FILE, "transcription_shortcut", "press", "{LCtrl down}{LAlt down}{Up down}")
 TRANSCRIPTION_RELEASE := IniRead(CONFIG_FILE, "transcription_shortcut", "release", "{Up up}{LAlt up}{LCtrl up}")
@@ -18,10 +19,13 @@ CLEAR_SELECT := IniRead(CONFIG_FILE, "clear", "select", "^a")
 CLEAR_DELETE := IniRead(CONFIG_FILE, "clear", "delete", "{Backspace}")
 CLEAR_DELAY_MS := ReadInteger("clear", "delay_ms", 30)
 
-OUTPUT_FILE := A_Temp "\tws-media-router-" DllCall("GetCurrentProcessId") ".log"
+PROCESS_ID := DllCall("GetCurrentProcessId")
+OUTPUT_FILE := A_Temp "\tws-media-router-" PROCESS_ID ".log"
+TRACE_FLAG := A_Temp "\tws-media-router-trace.flag"
+TRACE_FILE := A_Temp "\tws-media-router-trace-" PROCESS_ID ".log"
 Router := RouterState()
 Detector := DetectorGate(DETECTOR_STALE_AFTER_MS)
-SmtcCompat := SmtcCompatState()
+SmtcCompat := SmtcCompatState(SMTC_GUARD_IDLE_MS)
 LastReadPosition := 0
 DetectorPid := 0
 
@@ -32,8 +36,14 @@ OnExit(StopDetector)
 SetTimer(ReadDetectorOutput, POLL_INTERVAL_MS)
 
 #HotIf ShouldRouteMediaKeys()
-Media_Next::ApplyNextRouterAction()
-Media_Prev::ApplyPrevRouterAction()
+Media_Next::{
+    Trace("direct_media", "next")
+    ApplyNextRouterAction()
+}
+Media_Prev::{
+    Trace("direct_media", "prev")
+    ApplyPrevRouterAction()
+}
 #HotIf
 
 ShouldRouteMediaKeys() {
@@ -54,16 +64,20 @@ ShouldRouteMediaKeys() {
 ApplyNextRouterAction() {
     global Router
     action := Router.Next()
+    Trace("router_next", action)
 
     if action = "voice"
         TriggerTranscriptionShortcut()
-    else
+    else {
+        Trace("send", "Enter")
         SendInput("{Enter}")
+    }
 }
 
 ApplyPrevRouterAction() {
     global Router
     action := Router.Prev(WinExist("A"))
+    Trace("router_prev", action)
 
     if action = "clear"
         ClearCurrentInput()
@@ -71,37 +85,62 @@ ApplyPrevRouterAction() {
 
 HandleSmtcAction(action) {
     global SmtcCompat
-    SmtcCompat.HandleAction(action, ShouldRouteMediaKeys(), A_TickCount)
+    tick := A_TickCount
+    Trace("smtc_action", action)
+    decision := SmtcCompat.HandleAction(action, ShouldRouteMediaKeys(), tick)
+    Trace("smtc_decision", decision)
+
+    if decision = "route-next"
+        SetTimer(ApplyNextRouterAction, -1)
+    else if decision = "route-prev"
+        SetTimer(ApplyPrevRouterAction, -1)
+    else if decision = "force-pause"
+        SetTimer(ForceGuardPause, -1)
 }
 
 PerformSmtcNextCompensation() {
+    global SmtcCompat
+    SmtcCompat.Expect(["prev", "pause"], A_TickCount)
+    Trace("compensate_send", "Media_Prev")
     SendInput("{Media_Prev}")
     Sleep(80)
+    Trace("compensate_send", "Media_Play_Pause")
     SendInput("{Media_Play_Pause}")
-    Sleep(50)
-    ApplyNextRouterAction()
 }
 
 PerformSmtcPrevCompensation() {
+    global SmtcCompat
+    SmtcCompat.Expect(["next", "pause"], A_TickCount)
+    Trace("compensate_send", "Media_Next")
     SendInput("{Media_Next}")
     Sleep(80)
+    Trace("compensate_send", "Media_Play_Pause")
     SendInput("{Media_Play_Pause}")
-    Sleep(50)
-    ApplyPrevRouterAction()
+}
+
+ForceGuardPause() {
+    global SmtcCompat
+    SmtcCompat.Expect(["pause"], A_TickCount)
+    Trace("guard_force", "Media_Play_Pause")
+    SendInput("{Media_Play_Pause}")
 }
 
 TriggerTranscriptionShortcut() {
     global TRANSCRIPTION_PRESS, TRANSCRIPTION_RELEASE, TRANSCRIPTION_HOLD_MS
+    Trace("voice_shortcut", "press")
     SendInput(TRANSCRIPTION_PRESS)
     Sleep(TRANSCRIPTION_HOLD_MS)
     SendInput(TRANSCRIPTION_RELEASE)
+    Trace("voice_shortcut", "release")
 }
 
 ClearCurrentInput() {
     global CLEAR_SELECT, CLEAR_DELETE, CLEAR_DELAY_MS
+    Trace("clear", "select")
     SendInput(CLEAR_SELECT)
     Sleep(CLEAR_DELAY_MS)
     SendInput(CLEAR_DELETE)
+    Trace("clear", "delete")
 }
 
 ReadInteger(section, key, defaultValue, minimum := 0) {
@@ -136,32 +175,57 @@ ReadDetectorOutput() {
                 continue
             }
 
-            if line = "." && SmtcCompat.Expire(tick)
-                Router.Reset()
+            if line = "." {
+                if SmtcCompat.Expire(tick)
+                    Trace("guard", "expired")
+                continue
+            }
+
+            if line = "Playing" || line = "Idle" || line = "Unknown"
+                Trace("detector_state", line)
 
             result := Detector.ApplyLine(line, tick)
             smtcResult := "normal"
 
-            if line = "Playing" || line = "Idle" || line = "Unknown"
+            if line = "Playing" || line = "Idle" || line = "Unknown" {
                 smtcResult := SmtcCompat.HandleState(line, tick)
+                Trace("guard_state", smtcResult)
+            }
 
             if smtcResult = "compensate-next"
                 SetTimer(PerformSmtcNextCompensation, -1)
             else if smtcResult = "compensate-prev"
                 SetTimer(PerformSmtcPrevCompensation, -1)
+            else if smtcResult = "force-pause"
+                SetTimer(ForceGuardPause, -1)
 
-            suppressReset := smtcResult = "compensate-next"
-                || smtcResult = "compensate-prev"
-                || smtcResult = "complete"
-                || smtcResult = "active"
+            suppressReset := SmtcCompat.GuardActive && line != "Unknown"
 
-            if result = "reset" && !suppressReset
+            if result = "reset" && !suppressReset {
+                Trace("router", "reset")
                 Router.Reset()
+            }
         }
 
         LastReadPosition := output.Pos
         output.Close()
     }
+}
+
+UnixMillis() {
+    fileTime := Buffer(8, 0)
+    DllCall("GetSystemTimeAsFileTime", "Ptr", fileTime)
+    ticks := NumGet(fileTime, 0, "Int64")
+    return (ticks - 116444736000000000) // 10000
+}
+
+Trace(event, detail := "") {
+    global TRACE_FLAG, TRACE_FILE
+
+    if !FileExist(TRACE_FLAG)
+        return
+
+    try FileAppend(UnixMillis() "|" event "|" detail "`n", TRACE_FILE, "UTF-8")
 }
 
 StopDetector(*) {
