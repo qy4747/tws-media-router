@@ -24,6 +24,9 @@ provider.on("state", (state) => {
 provider.on("action", (action) => {
   console.log(`SMTC:${action}`)
 })
+provider.on("observation", (state) => {
+  console.log(`OBS:${state}`)
+})
 provider.on("heartbeat", () => {
   console.log(".")
 })
