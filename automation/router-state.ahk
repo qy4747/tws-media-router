@@ -105,6 +105,7 @@ class SmtcCompatState {
         this.GuardDeadlineTick := 0
         this.PendingRestores := []
         this.CompensationInFlight := false
+        this.PauseAcknowledged := false
         this.ExpectedActions := []
         this.ExpectedDeadlineTick := 0
     }
@@ -122,6 +123,7 @@ class SmtcCompatState {
             this.GuardDeadlineTick := 0
             this.PendingRestores := []
             this.CompensationInFlight := false
+            this.PauseAcknowledged := false
             expired := true
         }
 
@@ -139,6 +141,8 @@ class SmtcCompatState {
 
         if this.ExpectedActions.Length && action = this.ExpectedActions[1] {
             this.ExpectedActions.RemoveAt(1)
+            if action = "pause"
+                this.PauseAcknowledged := true
             if !this.ExpectedActions.Length
                 this.ExpectedDeadlineTick := 0
             return "echo"
@@ -177,18 +181,29 @@ class SmtcCompatState {
             return expired ? "expired" : "normal"
 
         if state = "Playing" {
+            if this.CompensationInFlight {
+                if !this.PauseAcknowledged
+                    return "guard"
+
+                this.CompensationInFlight := false
+                this.PauseAcknowledged := false
+            }
+
             if this.PendingRestores.Length {
                 restore := this.PendingRestores.RemoveAt(1)
                 this.CompensationInFlight := true
+                this.PauseAcknowledged := false
                 return restore = "prev" ? "compensate-prev" : "compensate-next"
             }
 
             this.CompensationInFlight := true
+            this.PauseAcknowledged := false
             return "force-pause"
         }
 
         if state = "Idle" && this.CompensationInFlight {
             this.CompensationInFlight := false
+            this.PauseAcknowledged := false
 
             if this.PendingRestores.Length {
                 restore := this.PendingRestores.RemoveAt(1)
