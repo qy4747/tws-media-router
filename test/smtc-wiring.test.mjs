@@ -73,7 +73,12 @@ test("SMTC Next ordering keeps compensation outside the recording interval", asy
   )
   assert.match(
     ahk,
+    /else if decision = "pause-confirmed" && DeferredNextAction != "" \{[\s\S]*?ReleaseGuard\(\)[\s\S]*?ExecuteNextRouterAction/,
+    "confirmed Pause must release the guard and start deferred recording without waiting for Idle"
+  )
+  assert.match(
+    ahk,
     /else if result = "settled" && DeferredNextAction != "" \{[\s\S]*?ReleaseGuard\(\)[\s\S]*?ExecuteNextRouterAction/,
-    "guard must be released before deferred recording starts"
+    "Idle remains a fallback if Pause confirmation is not observed"
   )
 })
