@@ -98,7 +98,7 @@ HandleSmtcAction(action) {
     Trace("smtc_decision", decision)
 
     if decision = "route-next"
-        SetTimer(BeginSmtcNextRouterAction, -1)
+        BeginSmtcNextRouterAction()
     else if decision = "route-prev"
         SetTimer(ApplyPrevRouterAction, -1)
     else if decision = "force-pause"
@@ -224,8 +224,14 @@ ReadDetectorOutput() {
 
             if line = "." {
                 Detector.ApplyLine(line, tick)
-                if SmtcCompat.Expire(tick)
+                if SmtcCompat.Expire(tick) {
                     Trace("guard", "expired")
+                    if DeferredNextAction != "" {
+                        Trace("router_deferred", "aborted-on-guard-expiry")
+                        DeferredNextAction := ""
+                        Router.Reset()
+                    }
+                }
                 continue
             }
 
