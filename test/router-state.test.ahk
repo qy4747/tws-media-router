@@ -8,13 +8,13 @@ AssertEqual(actual, expected, message) {
 
 router := RouterState()
 AssertEqual(router.CommandActive, false, "router starts outside a command session")
-AssertEqual(router.Next(), "voice", "first Next starts transcription")
+AssertEqual(router.Next(), "voice-start", "first Next starts transcription")
 AssertEqual(router.CommandActive, true, "first Next owns the command session")
-AssertEqual(router.Next(), "voice", "second Next stops transcription")
+AssertEqual(router.Next(), "voice-stop", "second Next stops transcription")
 AssertEqual(router.CommandActive, true, "second Next keeps command ownership until send")
 AssertEqual(router.Next(), "enter", "third Next sends Enter")
 AssertEqual(router.CommandActive, false, "third Next closes the command session")
-AssertEqual(router.Next(), "voice", "Next sequence loops without a time window")
+AssertEqual(router.Next(), "voice-start", "Next sequence loops without a time window")
 AssertEqual(router.CommandActive, true, "new Next cycle opens a new command session")
 
 router.Reset()
@@ -32,7 +32,7 @@ router.Reset()
 router.Next()
 router.Next()
 router.Reset()
-AssertEqual(router.Next(), "voice", "state reset restarts Next sequence")
+AssertEqual(router.Next(), "voice-start", "state reset restarts Next sequence")
 AssertEqual(router.Prev(3003), "reset", "state reset restarts Prev sequence")
 
 gate := DetectorGate(3000)
@@ -62,7 +62,7 @@ AssertEqual(smtc.HandleState("Playing", 1050), "compensate-prev", "Next queues P
 smtc.Expect(["prev", "pause"], 1060)
 AssertEqual(smtc.HandleAction("previous", false, 1100), "echo", "self Previous echo is consumed")
 AssertEqual(smtc.HandleAction("pause", false, 1150), "echo", "self Pause echo is consumed")
-AssertEqual(smtc.HandleState("Idle", 1200), "guard", "guard survives compensation returning to Idle")
+AssertEqual(smtc.HandleState("Idle", 1200), "settled", "compensation reports settled when playback returns Idle")
 
 retry := SmtcCompatState(1500, 750)
 AssertEqual(retry.HandleAction("next", true, 5000), "route-next", "retry scenario opens guard")
@@ -74,7 +74,7 @@ AssertEqual(retry.HandleAction("pause", false, 5090), "echo", "Pause acknowledge
 AssertEqual(retry.HandleState("Playing", 5100), "force-pause", "Playing after acknowledged Pause is forced back to Pause")
 retry.Expect(["pause"], 5110)
 AssertEqual(retry.HandleAction("pause", false, 5120), "echo", "forced Pause acknowledgement is consumed")
-AssertEqual(retry.HandleState("Idle", 5130), "guard", "successful retry returns to guarded Idle")
+AssertEqual(retry.HandleState("Idle", 5130), "settled", "successful retry reports settled Idle")
 
 AssertEqual(smtc.HandleAction("next", false, 1300), "route-next", "a second Next routes even during transient non-idle guard state")
 AssertEqual(smtc.GuardDeadlineTick, 2800, "user Next refreshes the sliding guard deadline")
