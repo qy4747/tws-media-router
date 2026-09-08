@@ -10,8 +10,9 @@ test("default config preserves the verified environment settings", async () => {
 
   assert.equal(config.actions, undefined)
   assert.deepEqual(provider, { provider: "netease", gsmtcPollIntervalMs: 500 })
-  assert.equal(config.detector.poll_interval_ms, "100")
+  assert.equal(config.detector.poll_interval_ms, "30")
   assert.equal(config.detector.stale_after_ms, "3000")
+  assert.equal(config.smtc.guard_idle_ms, "1500")
   assert.equal(config.transcription_shortcut.press, "{LCtrl down}{LAlt down}{Up down}")
   assert.equal(config.transcription_shortcut.release, "{Up up}{LAlt up}{LCtrl up}")
   assert.equal(config.transcription_shortcut.hold_ms, "50")
