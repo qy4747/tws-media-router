@@ -7,14 +7,21 @@ AssertEqual(actual, expected, message) {
 }
 
 router := RouterState()
+AssertEqual(router.CommandActive, false, "router starts outside a command session")
 AssertEqual(router.Next(), "voice", "first Next starts transcription")
+AssertEqual(router.CommandActive, true, "first Next owns the command session")
 AssertEqual(router.Next(), "voice", "second Next stops transcription")
+AssertEqual(router.CommandActive, true, "second Next keeps command ownership until send")
 AssertEqual(router.Next(), "enter", "third Next sends Enter")
+AssertEqual(router.CommandActive, false, "third Next closes the command session")
 AssertEqual(router.Next(), "voice", "Next sequence loops without a time window")
+AssertEqual(router.CommandActive, true, "new Next cycle opens a new command session")
 
 router.Reset()
 AssertEqual(router.Prev(1001), "reset", "first Prev resets Next sequence")
+AssertEqual(router.CommandActive, true, "first Prev opens command ownership for the clear sequence")
 AssertEqual(router.Prev(1001), "clear", "second Prev clears in the same window")
+AssertEqual(router.CommandActive, false, "second Prev closes the command session")
 
 router.Reset()
 AssertEqual(router.Prev(1001), "reset", "first Prev records active window")
@@ -40,9 +47,10 @@ AssertEqual(gate.GetRouteDecision(true, 5002), "pass", "stale detector remains f
 
 AssertEqual(gate.ApplyLine("Playing", 6000), "reset", "state recovery resets routing sequence")
 AssertEqual(gate.GetRouteDecision(true, 6001), "pass", "Playing passes media keys through")
+AssertEqual(gate.GetRouteDecision(true, 6001, true), "route", "healthy active command can route while Playing")
 AssertEqual(gate.ApplyLine("Playing", 6100), "state", "repeated Playing does not reset sequence")
 AssertEqual(gate.ApplyLine("Unknown", 6200), "reset", "Unknown requests a reset")
-AssertEqual(gate.GetRouteDecision(true, 6201), "pass", "Unknown fails open")
+AssertEqual(gate.GetRouteDecision(true, 6201, true), "pass", "Unknown still fails open even for an active command")
 
 AssertEqual(gate.ApplyLine("Idle", 7000), "reset", "Idle can recover after Unknown")
 AssertEqual(gate.GetRouteDecision(false, 7001), "reset-pass", "dead detector process fails open")
