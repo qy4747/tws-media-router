@@ -240,8 +240,12 @@ export class NeteasePlayStateDetector extends EventEmitter {
           this.pendingBytes = new Uint8Array(result.pendingBytes)
           this.fileSize = targetSize
           for (const event of result.events) {
-            if (event.kind === "action") this.emit("action", event.value)
-            else this.emitState(event.value)
+            if (event.kind === "action") {
+              this.emit("action", event.value)
+            } else {
+              this.emit("observation", event.value)
+              this.emitState(event.value)
+            }
           }
         }
       }
